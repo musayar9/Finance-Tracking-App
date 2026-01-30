@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import * as LocalAuthentication from "expo-local-authentication";
 import { useState, useEffect } from "react";
 import {
   Platform,
@@ -10,6 +11,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Alert,
+  Linking,
 } from "react-native";
 import { user } from "../constants/mockData";
 import { BORDER_RADIUS, COLORS, FONTS, SHADOWS, SPACING } from "../utils/theme";
@@ -17,17 +20,94 @@ import { useTranslation } from "../utils/translations";
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const [faceIdEnabled, setFaceIdEnabled] = useState(false);
+  const [biometricType, setBiometricType] = useState<string>("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  const handleSecureStore = async (value: boolean) => {
-    await SecureStore.setItemAsync("biometric_enabled", JSON.stringify(value));
+  const checkBiometricSupport = async () => {
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+    const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+    
+    if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+      setBiometricType("Face ID");
+    } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+      setBiometricType("Touch ID");
+    } else {
+      setBiometricType("Biyometrik");
+    }
+    
+    return { hasHardware, isEnrolled };
+  };
+
+  const handleBiometricToggle = async (value: boolean) => {
+    if (value) {
+      const { hasHardware, isEnrolled } = await checkBiometricSupport();
+      
+      if (!hasHardware) {
+        Alert.alert(
+          "Biyometrik Doğrulama Desteklenmiyor",
+          "Cihazınız biyometrik doğrulamayı desteklemiyor.",
+          [{ text: "Tamam" }]
+        );
+        return;
+      }
+      
+      if (!isEnrolled) {
+        Alert.alert(
+          `${biometricType} Ayarlanmamış`,
+          `${biometricType} kullanmak için önce cihaz ayarlarından ${biometricType}'yi ayarlamanız gerekiyor.`,
+          [
+            { text: "İptal", style: "cancel" },
+            {
+              text: "Ayarlara Git",
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('App-Prefs:TOUCHID_PASSCODE');
+                } else {
+                  Linking.openSettings();
+                }
+              }
+            }
+          ]
+        );
+        return;
+      }
+      
+      // Test biyometrik doğrulama
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: `${biometricType} ile doğrulayın`,
+        fallbackLabel: "Şifre kullan",
+        cancelLabel: "İptal",
+        disableDeviceFallback: false,
+      });
+      
+      if (result.success) {
+        setFaceIdEnabled(true);
+        await SecureStore.setItemAsync("biometric_enabled", "true");
+        Alert.alert(
+          "Başarılı",
+          `${biometricType} doğrulama etkinleştirildi.`,
+          [{ text: "Tamam" }]
+        );
+      } else {
+        Alert.alert(
+          "Doğrulama Başarısız",
+          `${biometricType} doğrulama başarısız oldu.`,
+          [{ text: "Tamam" }]
+        );
+      }
+    } else {
+      setFaceIdEnabled(false);
+      await SecureStore.setItemAsync("biometric_enabled", "false");
+    }
   };
 
   const loadBiometricSetting = async () => {
     try {
+      await checkBiometricSupport();
       const stored = await SecureStore.getItemAsync("biometric_enabled");
-      if (stored) {
-        setFaceIdEnabled(JSON.parse(stored));
+      if (stored === "true") {
+        setFaceIdEnabled(true);
       }
     } catch (error) {
       console.log('Error loading biometric setting:', error);
@@ -38,7 +118,6 @@ export default function ProfileScreen() {
   useEffect(() => {
     loadBiometricSetting();
   }, []);
-console.log(faceIdEnabled)
   const profileSections = [
     {
       title: t("account"),
@@ -118,14 +197,13 @@ console.log(faceIdEnabled)
               size={20}
               color={COLORS.primaryGreen}
             />
-            <Text style={styles.settingTitle}>{t("faceIdTouchId")}</Text>
+            <Text style={styles.settingTitle}>
+              {biometricType || "Biyometrik Doğrulama"}
+            </Text>
           </View>
           <Switch
             value={faceIdEnabled}
-            onValueChange={(value) => {
-              setFaceIdEnabled(value);
-              handleSecureStore(value);
-            }}
+            onValueChange={handleBiometricToggle}
             trackColor={{ false: COLORS.border, true: COLORS.primaryGreen }}
             thumbColor={COLORS.white}
           />
