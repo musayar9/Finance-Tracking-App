@@ -15,7 +15,7 @@ To manage financial data in a single place, analyze spending habits, monitor inv
 - **Portfolio**: Shows portfolio value, daily profit/loss, stocks and crypto assets, and detailed holding information.
 - **Budget**: Monthly budget tracking, category-based spending analysis, visual progress bars.
 - **Profile**: User information, security settings (Face ID, notifications), account settings.
-- 
+  
 ## Technologies Used
 
 - **React Native**: Mobile app development
